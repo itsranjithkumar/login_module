@@ -4,6 +4,8 @@ from starlette.responses import RedirectResponse
 from starlette.middleware.sessions import SessionMiddleware
 from authlib.integrations.starlette_client import OAuth, OAuthError
 from config import CLIENT_ID, CLIENT_SECRET
+from pydantic import BaseModel
+import secrets
 
 app = FastAPI()
 app.add_middleware(SessionMiddleware, secret_key="add any string...")
@@ -22,6 +24,15 @@ oauth.register(
         'redirect_uri': 'http://localhost:8000/auth'
     }
 )
+
+class User(BaseModel):
+    email: str
+    password: str
+    name: str = None
+
+class Login(BaseModel):
+    email: str
+    password: str
 
 @app.get("/")
 def index(request: Request):
@@ -42,6 +53,45 @@ async def signup(request: Request):
     request.session['auth_type'] = 'signup'
     url = request.url_for('auth')
     return await oauth.google.authorize_redirect(request, url)
+
+@app.post("/api/signup")
+async def api_signup(user: User):
+    if user.email in users:
+        return {"error": "User already exists. Please login instead."}
+    
+    # Store user with hashed password (in production, use a proper hashing library)
+    users[user.email] = {
+        'email': user.email,
+        'password': user.password,  # In production, hash this password
+        'name': user.name,
+        'picture': None
+    }
+    
+    # Generate access token
+    access_token = secrets.token_urlsafe(32)
+    
+    return {
+        "message": "Successfully signed up",
+        "access_token": access_token,
+        "token_type": "Bearer",
+        "user_info": users[user.email]
+    }
+
+@app.post("/api/login")
+async def api_login(login: Login):
+    user = users.get(login.email)
+    if not user or user['password'] != login.password:
+        return {"error": "Invalid credentials"}
+    
+    # Generate access token
+    access_token = secrets.token_urlsafe(32)
+    
+    return {
+        "message": "Successfully logged in",
+        "access_token": access_token,
+        "token_type": "Bearer",
+        "user_info": user
+    }
 
 @app.get('/auth')
 async def auth(request: Request):
@@ -93,4 +143,3 @@ def logout(request: Request):
     request.session.pop('auth_type', None)
     request.session.clear()
     return {"message": "Successfully logged out"}
-    
