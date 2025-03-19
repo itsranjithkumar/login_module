@@ -93,3 +93,4 @@ def logout(request: Request):
     request.session.pop('auth_type', None)
     request.session.clear()
     return {"message": "Successfully logged out"}
+    
